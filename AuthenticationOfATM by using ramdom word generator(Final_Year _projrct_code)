@@ -1,0 +1,159 @@
+#include <Wire.h>
+#include <SoftwareSerial.h>
+#include <MFRC522.h>
+#include <LiquidCrystal.h>
+#define SS_PIN 8 // Define SS_PIN for RFID
+#define RST_PIN 9 // Define RST_PIN for RFID
+SoftwareSerial gsmSerial(10, 11);
+LiquidCrystal lcd(A5, A4, A3, A2, A1, A0);
+MFRC522 mfrc522(SS_PIN, RST_PIN);
+#define BUZZER_PIN 3
+#define DC_MOTOR_PIN1 4
+#define DC_MOTOR_PIN2 5
+char receivedWord[5];
+char actualWord[5];
+// Declare the function before it's used
+void dump_byte_array(byte *buffer, byte bufferSize);
+void setup() {
+ lcd.begin(16, 2);
+ Serial.begin(9600);
+ // Initialize serial for Bluetooth data
+ pinMode(BUZZER_PIN, OUTPUT);
+ pinMode(DC_MOTOR_PIN1, OUTPUT);
+ pinMode(DC_MOTOR_PIN2, OUTPUT);
+ digitalWrite(BUZZER_PIN, LOW);
+ digitalWrite(DC_MOTOR_PIN1, LOW);
+ digitalWrite(DC_MOTOR_PIN2, LOW);
+ gsmSerial.begin(9600);
+ SPI.begin();
+ mfrc522.PCD_Init();
+ lcd.clear();
+ lcd.print("IoT - Based ATM^_^");
+ lcd.setCursor(0, 1);
+ lcd.print("Pin Entry by :)");
+ delay(2000);
+ lcd.clear();
+ lcd.print("Random Word:)");
+ lcd.setCursor(0, 1);
+ lcd.print("Generator ^_^");
+ delay(2000);
+ lcd.clear(); // Clear the LCD before waiting for user input
+}
+void loop() {
+ if (checkRFID()) {
+ generateRandomWord(); // Generate a new random word when an RFID card is detected
+ printCardDetails(); // Print RFID card details to serial monitor
+ sendGeneratedWord(); // Send the generated word via GSM
+ delay(500); // Add a delay to ensure a new random word for the next RFID card
+ waitForBluetoothInput(); // Wait for user input via Bluetooth
+ receiveAndValidateData(); // Receive and validate data via Bluetooth
+ }
+}
+bool checkRFID() {
+ if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
+ return true;
+ }
+ return false;
+}
+void printCardDetails() {
+ dump_byte_array(mfrc522.uid.uidByte, mfrc522.uid.size);
+}
+void generateRandomWord() {
+ // Introduce a new random seed for better randomness
+ randomSeed(analogRead(A0));
+ // Generate a new random 4-letter word each time an RFID card is detected
+ for (int i = 0; i < 4; i++) {
+ actualWord[i] = char(random('A', 'Z' + 1));
+ }
+}
+void sendGeneratedWord() {
+ SendMessage("YourPhoneNumber", actualWord); // Replace "YourPhoneNumber" with the 
+actual phone number
+}
+void SendMessage(const char* phoneNumber, const char* messageWord) {
+ gsmSerial.println("AT"); // test check communication with GSM module
+ delay(500);
+gsmSerial.println("ATE0"); // ATE0: Switch echo off. ATE1: Switch echo on.
+ delay(500);
+ gsmSerial.println("AT+CMGF=1"); // set SMS text mode
+ delay(500);
+ gsmSerial.println("AT+CMGS=\"+918688509417\"");
+ gsmSerial.print(phoneNumber);
+ gsmSerial.println("\""); // send specific number
+ delay(500);
+ gsmSerial.print("Word: ");
+ gsmSerial.print(messageWord);
+ delay(500);
+ gsmSerial.write(26); // ASCII code for Ctrl+Z to send SMS
+ lcd.clear();
+ lcd.setCursor(0, 0);
+ lcd.print("Word sent Check");
+ lcd.setCursor(0, 1);
+ lcd.print(" your mobile");
+ delay(5000);
+}
+void waitForBluetoothInput() {
+ lcd.clear();
+ lcd.setCursor(0, 0);
+ lcd.print("Waiting for");
+ lcd.setCursor(0, 1);
+ lcd.print("Bluetooth...");
+ // Wait for user input via Bluetooth
+ while (!Serial.available()) {
+ // Wait for data to be received
+ }
+ lcd.clear();
+ lcd.setCursor(0, 0);
+ lcd.print("Enter data via");
+ lcd.setCursor(0, 1);
+ lcd.print("Bluetooth");
+ delay(2000);
+}
+void receiveAndValidateData() {
+ lcd.clear();
+ lcd.setCursor(0, 0);
+ lcd.print("Waiting for Data...");
+ // Wait for data to be received via Bluetooth
+while (!Serial.available()) {
+ // Wait for data to be received
+ }
+ // Read the received Word
+ for (int i = 0; i < 4; i++) {
+ receivedWord[i] = Serial.read();
+ } 
+ // Validate the received data
+ if (validateData()) {
+ lcd.clear();
+ lcd.setCursor(0, 0);
+ lcd.print("Data Verified!");
+ // Perform actions for correct data (e.g., rotate motor)
+ digitalWrite(DC_MOTOR_PIN1, HIGH);
+ digitalWrite(DC_MOTOR_PIN2, LOW);
+ delay(6000);
+ digitalWrite(DC_MOTOR_PIN1, LOW);
+ digitalWrite(DC_MOTOR_PIN2, LOW);
+ } else {
+ lcd.clear();
+ lcd.setCursor(0, 0);
+ lcd.print("Invalid Data!");
+ // Perform actions for incorrect data (e.g., activate buzzer)
+ digitalWrite(BUZZER_PIN, HIGH);
+ delay(5000);
+ digitalWrite(BUZZER_PIN, LOW);
+ }
+}
+bool validateData() {
+ // Validate the received word with the generated word
+ for (int i = 0; i < 4; i++) {
+ if (receivedWord[i] != actualWord[i]) {
+ return false;
+ }
+ }
+ return true;
+}
+void dump_byte_array(byte *buffer, byte bufferSize) {
+ for (byte i = 0; i < bufferSize; i++) {
+ Serial.print(buffer[i] < 0x10 ? " 0" : " ");
+ Serial.print(buffer[i], HEX);
+ }
+} 
